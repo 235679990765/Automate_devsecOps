@@ -1,0 +1,23 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install dependencies (cache-friendly)
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source
+COPY . .
+
+# Security: non-root user
+RUN addgroup -S app && adduser -S app -G app
+USER app
+
+EXPOSE {{ port }}
+
+{% if health_endpoint %}
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost:{{ port }}{{ health_endpoint }} || exit 1
+{% endif %}
+
+CMD ["npm", "start"]

@@ -1,44 +1,32 @@
 import subprocess
 import random
+from pathlib import Path
+from docker.env import write_env_file
 
 
-# ---------------------------------------------------------
-# Find container (running or stopped) by image
-# ---------------------------------------------------------
+# ------------------------------
+# Find container by image
+# ------------------------------
 def get_container_by_image(image: str):
     try:
         cid = subprocess.check_output(
-            [
-                "docker", "ps", "-a",
-                "--filter", f"ancestor={image}",
-                "--format", "{{.ID}}"
-            ]
+            ["docker", "ps", "-a", "--filter", f"ancestor={image}", "--format", "{{.ID}}"]
         ).decode().strip()
         return cid if cid else None
     except subprocess.CalledProcessError:
         return None
 
 
-# ---------------------------------------------------------
-# Check if container is running
-# ---------------------------------------------------------
 def is_container_running(container_id: str) -> bool:
     try:
         status = subprocess.check_output(
-            [
-                "docker", "inspect",
-                "-f", "{{.State.Running}}",
-                container_id
-            ]
+            ["docker", "inspect", "-f", "{{.State.Running}}", container_id]
         ).decode().strip()
         return status == "true"
     except subprocess.CalledProcessError:
         return False
 
 
-# ---------------------------------------------------------
-# Get actual HOST port mapped to container port
-# ---------------------------------------------------------
 def get_container_host_port(container_id: str, container_port: int):
     try:
         out = subprocess.check_output(
@@ -54,9 +42,6 @@ def get_container_host_port(container_id: str, container_port: int):
         return None
 
 
-# ---------------------------------------------------------
-# Check if a host port is free
-# ---------------------------------------------------------
 def is_port_free(port: int) -> bool:
     try:
         out = subprocess.check_output(
@@ -67,9 +52,6 @@ def is_port_free(port: int) -> bool:
         return True
 
 
-# ---------------------------------------------------------
-# Stop all containers belonging to this project
-# ---------------------------------------------------------
 def stop_all_project_containers(project: str):
     try:
         container_ids = subprocess.check_output(
@@ -86,55 +68,62 @@ def stop_all_project_containers(project: str):
         pass
 
 
-# ---------------------------------------------------------
-# SMART PLATFORM-GRADE RUNNER (FINAL)
-# ---------------------------------------------------------
-def run_container(image: str, container_port: int, project: str):
+# ------------------------------
+# FINAL RUNNER (ENV + PORT SAFE)
+# ------------------------------
+def run_container(
+    image: str,
+    container_port: int,
+    project: str,
+    service_path: Path,
+    env_vars: dict | None = None
+):
     """
     FINAL RULES:
     - Reuse container if same image exists
-    - If container exposes port 80 → ALWAYS use random host port
-    - Otherwise use fixed port if free
-    - Never crash on port conflicts
+    - Never bind host port 80
+    - Inject env vars via .env
     """
 
-    # 1️⃣ Reuse existing container
+    # 🔹 Write env file if provided
+    env_file = write_env_file(service_path, env_vars or {})
+
+    # 🔁 Reuse existing container
     existing_cid = get_container_by_image(image)
     if existing_cid:
         if not is_container_running(existing_cid):
             subprocess.run(["docker", "start", existing_cid], check=True)
 
         host_port = get_container_host_port(existing_cid, container_port)
-
         return {
             "status": "reused",
             "url": f"http://localhost:{host_port}",
             "port": host_port
         }
 
-    # 2️⃣ New image → stop old project containers
+    # 🔥 New image → stop old containers
     stop_all_project_containers(project)
 
-    # 3️⃣ Decide host port (CRITICAL FIX)
-    if container_port == 80:
-        # 🔒 NEVER bind 80 directly
+    # 🔒 Decide host port
+    if container_port == 80 or not is_port_free(container_port):
         host_port = random.randint(30000, 40000)
     else:
-        if is_port_free(container_port):
-            host_port = container_port
-        else:
-            host_port = random.randint(30000, 40000)
+        host_port = container_port
 
     container_name = image.replace("/", "_").replace(":", "_")
 
-    # 4️⃣ Run container
+    # 🔹 Build docker run command
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,
         "--label", f"devsecops.project={project}",
-        "-p", f"{host_port}:{container_port}",
-        image
+        "-p", f"{host_port}:{container_port}"
     ]
+
+    if env_file:
+        cmd += ["--env-file", str(env_file)]
+
+    cmd.append(image)
 
     subprocess.run(cmd, check=True)
 

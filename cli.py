@@ -46,9 +46,9 @@ def main():
 
     # 🔹 Generate Dockerfiles
     print("\n🐳 Generating Dockerfiles...\n")
-    for service in result["services"]:
-        if service["deployable"]:
-            generate_dockerfile(service, repo_root)
+    #for service in result["services"]:
+     #   if service["deployable"]:
+       #     generate_dockerfile(service, repo_root)
 
     # 🔐 Ask credentials AFTER dockerfiles
     docker_user, docker_token = prompt_docker_credentials()
@@ -80,7 +80,14 @@ def main():
         build_image(repo_root, service, image)
         push_image(image)
 
-        run_result = run_container(image, port)
+        run_result = run_container(
+            image=image,
+            container_port=port,
+            project=project,
+            service_path=repo_root / service["path"],
+            env_vars=service.get("env", {})
+        )
+
         if run_result["status"] == "running":
             print(f"🌐 {service_name} running at → {run_result['url']}")
 

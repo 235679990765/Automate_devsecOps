@@ -1,7 +1,10 @@
 import subprocess
 import random
 from pathlib import Path
+
 from docker.env import write_env_file
+from docker.utils import image_exists, pull_image
+from docker.builder import build_image
 
 
 # ------------------------------
@@ -69,17 +72,19 @@ def stop_all_project_containers(project: str):
 
 
 # ------------------------------
-# FINAL RUNNER (ENV + PORT SAFE)
+# FINAL RUNNER (AUTO BUILD + SAFE RUN)
 # ------------------------------
 def run_container(
     image: str,
     container_port: int,
     project: str,
     service_path: Path,
+    repo_root: Path,
     env_vars: dict | None = None
 ):
     """
     FINAL RULES:
+    - Auto-pull or auto-build image if missing
     - Reuse container if same image exists
     - Never bind host port 80
     - Inject env vars via .env
@@ -87,6 +92,16 @@ def run_container(
 
     # 🔹 Write env file if provided
     env_file = write_env_file(service_path, env_vars or {})
+
+    # 🔥 ENSURE IMAGE EXISTS (FIX FOR YOUR ERROR)
+    if not image_exists(image):
+        pulled = pull_image(image)
+        if not pulled:
+            build_image(
+                repo_root=repo_root,
+                service={"path": service_path.name},
+                image=image
+            )
 
     # 🔁 Reuse existing container
     existing_cid = get_container_by_image(image)

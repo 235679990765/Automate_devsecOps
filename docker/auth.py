@@ -10,4 +10,4 @@ def docker_login(username: str, token: str):
     _, err = process.communicate(input=token.encode())
 
     if process.returncode != 0:
-        raise RuntimeError(f"Docker login failed: {err.decode()}")
+        raise RuntimeError(f"Docker login failed: {err.decode().strip()}")

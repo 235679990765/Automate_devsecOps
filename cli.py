@@ -85,6 +85,7 @@ def main():
             container_port=port,
             project=project,
             service_path=repo_root / service["path"],
+            repo_root=repo_root,                # ✅ ADD THIS
             env_vars=service.get("env", {})
         )
 

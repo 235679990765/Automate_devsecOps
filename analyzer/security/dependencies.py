@@ -9,10 +9,19 @@ INSECURE_LIBS = {
 def scan_dependency_risks(repo, language):
     findings = []
 
+    # 🔑 FIX: normalize language
+    if isinstance(language, dict):
+        lang = language.get("name")
+    else:
+        lang = language
+
+    if not isinstance(lang, str):
+        return findings  # fail safe
+
     for file in iter_files(repo):
         content = file.read_text(errors="ignore").lower()
 
-        for lib in INSECURE_LIBS.get(language, []):
+        for lib in INSECURE_LIBS.get(lang.lower(), []):
             if lib in content:
                 findings.append({
                     "library": lib,

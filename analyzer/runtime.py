@@ -1,5 +1,13 @@
 import re
 
+IGNORE_DIRS = {
+    "node_modules",
+    "test", "tests", "__tests__",
+    "examples", "docs",
+    ".github",
+    "lib"
+}
+
 DEFAULT_PORTS = {
     ("node", "express"): 3000,
     ("node", "next"): 3000,
@@ -16,22 +24,21 @@ DEFAULT_PORTS = {
 
 
 def detect_runtime(repo, language, framework):
-    """
-    Returns clean runtime data.
-    NEVER returns tuples.
-    """
-    start = _detect_start(language)
+    start = _detect_start(language, framework)
     port, source = _detect_port(repo, language, framework)
 
     return {
         "start": start,
-        "port": port,                      # ✅ ALWAYS int
-        "port_detected_from": source       # ✅ metadata
+        "port": port,
+        "port_detected_from": source
     }
 
 
-# ---------- START COMMAND ----------
-def _detect_start(language):
+def _detect_start(language, framework):
+    # ✅ FastAPI special case
+    if language == "python" and framework == "fastapi":
+        return "uvicorn main:app --host 0.0.0.0 --port 8000"
+
     return {
         "frontend-static": "nginx -g 'daemon off;'",
         "node": "npm start",
@@ -44,7 +51,6 @@ def _detect_start(language):
     }.get(language)
 
 
-# ---------- PORT DETECTION ----------
 def _detect_port(repo, language, framework):
     # 1️⃣ ENV FILE
     for env in repo.rglob(".env"):
@@ -63,9 +69,12 @@ def _detect_port(repo, language, framework):
             if m:
                 return int(m.group(1)), "config"
 
-    # 3️⃣ SOURCE CODE
+    # 3️⃣ SOURCE CODE (FILTERED)
     for file in repo.rglob("*"):
         if file.suffix not in [".js", ".ts", ".py", ".go", ".rs", ".php", ".cs"]:
+            continue
+
+        if any(part in IGNORE_DIRS for part in file.parts):
             continue
 
         text = file.read_text(errors="ignore")

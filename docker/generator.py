@@ -1,8 +1,17 @@
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
+# -----------------------------------
+# Template setup
+# -----------------------------------
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+
+env = Environment(
+    loader=FileSystemLoader(TEMPLATE_DIR),
+    autoescape=False,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 TEMPLATE_MAP = {
     "frontend-static": "frontend-static.Dockerfile.j2",
@@ -12,14 +21,55 @@ TEMPLATE_MAP = {
 }
 
 
-def generate_dockerfile(service_path: Path, analysis: dict):
-    service_path.mkdir(parents=True, exist_ok=True)
+# -----------------------------------
+# Dockerfile Generator
+# -----------------------------------
+def generate_dockerfile(service_path: Path, analysis: dict) -> dict:
+    """
+    Generates a Dockerfile (and nginx.conf if needed) for a service.
+
+    Returns:
+        {
+            status: generated | skipped | error,
+            language: <detected language>,
+            path: <dockerfile path>,
+            error: <optional error message>
+        }
+    """
+
+    # ------------------------------
+    # Validation
+    # ------------------------------
+    if not isinstance(service_path, Path):
+        return {
+            "status": "error",
+            "error": f"service_path must be Path, got {type(service_path)}",
+        }
+
+    if not isinstance(analysis, dict):
+        return {
+            "status": "error",
+            "error": f"analysis must be dict, got {type(analysis)}",
+        }
+
+    try:
+        service_path.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"Failed to create service directory: {e}",
+        }
 
     dockerfile_path = service_path / "Dockerfile"
 
-    # Never overwrite
+    # ------------------------------
+    # Never overwrite Dockerfile
+    # ------------------------------
     if dockerfile_path.exists():
-        return {"status": "skipped", "path": str(dockerfile_path)}
+        return {
+            "status": "skipped",
+            "path": str(dockerfile_path),
+        }
 
     # ------------------------------
     # SAFE language detection
@@ -40,29 +90,51 @@ def generate_dockerfile(service_path: Path, analysis: dict):
         language = "node"
 
     if language not in TEMPLATE_MAP:
-        raise RuntimeError(f"No Dockerfile template for {language}")
+        return {
+            "status": "error",
+            "language": language,
+            "error": f"No Dockerfile template for language '{language}'",
+        }
 
     # ------------------------------
-    # Generate Dockerfile
+    # Load template
     # ------------------------------
-    template = env.get_template(TEMPLATE_MAP[language])
+    try:
+        template = env.get_template(TEMPLATE_MAP[language])
+    except TemplateNotFound:
+        return {
+            "status": "error",
+            "language": language,
+            "error": f"Template file not found: {TEMPLATE_MAP[language]}",
+        }
 
-    dockerfile_path.write_text(
-        template.render(
-            port=analysis.get("runtime", {}).get("port"),
-            health_endpoint=analysis.get("health_endpoint"),
+    # ------------------------------
+    # Render Dockerfile
+    # ------------------------------
+    try:
+        dockerfile_path.write_text(
+            template.render(
+                port=analysis.get("runtime", {}).get("port"),
+                health_endpoint=analysis.get("health_endpoint"),
+            )
         )
-    )
+    except Exception as e:
+        return {
+            "status": "error",
+            "language": language,
+            "error": f"Failed to write Dockerfile: {e}",
+        }
 
     # ------------------------------
-    # 🔥 AUTO-GENERATE nginx.conf
+    # AUTO-GENERATE nginx.conf
     # ------------------------------
     if language == "frontend-static":
         nginx_conf = service_path / "nginx.conf"
 
         if not nginx_conf.exists():
-            nginx_conf.write_text(
-                """
+            try:
+                nginx_conf.write_text(
+                    """
 server {
     listen 80;
     server_name localhost;
@@ -75,7 +147,13 @@ server {
     }
 }
 """.strip()
-            )
+                )
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "language": language,
+                    "error": f"Failed to write nginx.conf: {e}",
+                }
 
     return {
         "status": "generated",

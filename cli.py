@@ -43,12 +43,14 @@ def main():
     # 🔹 Analyze
     print("\n🔍 Analyzing repository...\n")
     result = analyze_repository(repo_input)
+    # print(result)
+    # exit(0)
 
     # 🔹 Generate Dockerfiles
     print("\n🐳 Generating Dockerfiles...\n")
-    #for service in result["services"]:
-     #   if service["deployable"]:
-       #     generate_dockerfile(service, repo_root)
+    for service in result["services"]:
+        if service["deployable"]:
+            generate_dockerfile(service, repo_root)
 
     # 🔐 Ask credentials AFTER dockerfiles
     docker_user, docker_token = prompt_docker_credentials()

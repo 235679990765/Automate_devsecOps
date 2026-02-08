@@ -1,6 +1,11 @@
 import re
 from analyzer.scanner import iter_files
 
+IGNORE_SECRET_DIRS = {
+    "test", "tests", "__tests__",
+    "examples", "docs"
+}
+
 SECRET_PATTERNS = {
     "AWS_ACCESS_KEY": r"AKIA[0-9A-Z]{16}",
     "JWT": r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
@@ -12,6 +17,10 @@ def scan_secrets(repo):
     findings = []
 
     for file in iter_files(repo):
+        # ✅ Ignore test & docs files
+        if any(part in IGNORE_SECRET_DIRS for part in file.parts):
+            continue
+
         content = file.read_text(errors="ignore")
         for name, pattern in SECRET_PATTERNS.items():
             if re.search(pattern, content, re.IGNORECASE):

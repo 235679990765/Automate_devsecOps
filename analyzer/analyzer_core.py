@@ -8,7 +8,7 @@ from analyzer.health import detect_health
 from analyzer.security.collector import collect_security_facts
 from analyzer.mldetecore import detect_ml
 from analyzer.dockerdetect import detect_dockerfiles
-
+from analyzer.node_devdeps import analyze_node_dev_dependencies
 def normalize_language(language_info):
     """
     Always returns a string language identifier
@@ -88,6 +88,11 @@ def analyze_single_service(repo: Path) -> dict:
     dockerfile = detect_dockerfiles(repo)
     ml_detection = detect_ml(repo)
 
+    # ---------------- Node Dev Dependency Analysis ----------------
+    node_dependency_analysis = None
+    if language == "node":
+        node_dependency_analysis = analyze_node_dev_dependencies(repo)
+
     return {
         "analysis": {
             "language": language_info,   # keep metadata
@@ -95,7 +100,8 @@ def analyze_single_service(repo: Path) -> dict:
             "needs_build_step": needs_build_step,
             "runtime": runtime,
             "database_used": database_used,
-            "health_endpoint": health_endpoint
+            "health_endpoint": health_endpoint,
+            "node_dependency_analysis": node_dependency_analysis
         },
         "confidence_score": max(min(confidence, 100), 0),
         "warnings": warnings,

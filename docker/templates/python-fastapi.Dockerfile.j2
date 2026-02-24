@@ -5,12 +5,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY pyproject.toml requirements.txt* ./
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
 COPY . .
+
+{% if has_pyproject_toml %}
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e ".[standard]" && pip cache purge
+{% else %}
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt && pip cache purge
+{% endif %}
 
 RUN useradd -m appuser
 USER appuser

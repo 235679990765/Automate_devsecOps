@@ -44,7 +44,7 @@ def main():
     print("\n🔍 Analyzing repository...\n")
     result = analyze_repository(repo_input)
     print(result)
-    exit(0)
+    
 
     # 🔹 Generate Dockerfiles
     print("\n🐳 Generating Dockerfiles...\n")

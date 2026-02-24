@@ -5,9 +5,9 @@ WORKDIR /app
 COPY package*.json ./
 
 {% if node_dependency_analysis and node_dependency_analysis.safe_production_install %}
-RUN npm ci --only=production
+RUN npm ci --only=production --legacy-peer-deps && npm cache clean --force
 {% else %}
-RUN npm ci || npm install
+RUN npm ci --legacy-peer-deps --omit=dev || npm install --legacy-peer-deps && npm cache clean --force
 {% endif %}
 
 COPY . .

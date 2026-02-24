@@ -1,20 +1,21 @@
-from analyzer.scanner import iter_files
+from pathlib import Path
 
-DOCKERFILE_NAMES = (
-    "dockerfile",
-)
 
-def detect_dockerfiles(repo):
+def detect_dockerfiles(repo: Path):
     """
-    Detect Dockerfile existence and locations
+    Detect Dockerfile existence and locations (case-insensitive).
+    This searches for files named `Dockerfile` or starting with `Dockerfile.`
+    so files with no extension are detected even when `iter_files` filters
+    by extension.
     """
 
     paths = []
 
-    for file in iter_files(repo):
-        name = file.name.lower()
+    for file in repo.rglob("*"):
+        if not file.is_file():
+            continue
 
-        # Dockerfile, Dockerfile.prod, dockerfile.dev, etc.
+        name = file.name.lower()
         if name == "dockerfile" or name.startswith("dockerfile."):
             paths.append(str(file))
 

@@ -108,6 +108,7 @@ def run_container(
     if existing_cid:
         if not is_container_running(existing_cid):
             subprocess.run(["docker", "start", existing_cid], check=True)
+            print(f"🔄 Restarted container with existing port")
 
         host_port = get_container_host_port(existing_cid, container_port)
         return {
@@ -116,18 +117,54 @@ def run_container(
             "port": host_port
         }
 
-    # 🔥 New image → stop old containers
-    stop_all_project_containers(project)
-
-    # 🔒 Decide host port
-    if container_port == 80 or not is_port_free(container_port):
-        host_port = random.randint(30000, 40000)
-    else:
+    # 🔥 Check if any old container for this project exists to reuse its port
+    try:
+        old_containers = subprocess.check_output(
+            [
+                "docker", "ps", "-a",
+                "--filter", f"label=devsecops.project={project}",
+                "--format", "{{.ID}}"
+            ]
+        ).decode().strip().splitlines()
+        
+        # Try to reuse port from first existing container
+        if old_containers:
+            old_port = get_container_host_port(old_containers[0], container_port)
+            if old_port:
+                host_port = old_port
+                print(f"♻️  Reusing port {host_port} from previous container")
+            else:
+                host_port = container_port
+        else:
+            host_port = container_port
+    except:
         host_port = container_port
+
+    # 🔒 Decide host port if not reused
+    if host_port == container_port:
+        if container_port == 80 or not is_port_free(container_port):
+            host_port = random.randint(30000, 40000)
+            print(f"⚠️  Port {container_port} unavailable, using {host_port}")
+        else:
+            host_port = container_port
+            print(f"✅ Using port {host_port}")
+
+    # 🔥 Stop old containers
+    stop_all_project_containers(project)
 
     container_name = image.replace("/", "_").replace(":", "_")
 
-    # 🔹 Build docker run command
+    # � Remove old container with same name if exists
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            check=False,
+            capture_output=True
+        )
+    except subprocess.CalledProcessError:
+        pass
+
+    # �🔹 Build docker run command
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,

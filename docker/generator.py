@@ -77,11 +77,15 @@ def generate_dockerfile(service_path: Path, analysis: dict) -> dict:
         }
 
     try:
+        # Check if pyproject.toml exists
+        has_pyproject_toml = (service_path / "pyproject.toml").exists()
+        
         dockerfile_path.write_text(
             template.render(
                 port=analysis.get("runtime", {}).get("port"),
                 health_endpoint=analysis.get("health_endpoint"),
                 node_dependency_analysis=analysis.get("node_dependency_analysis"),
+                has_pyproject_toml=has_pyproject_toml,
             )
         )
     except Exception as e:

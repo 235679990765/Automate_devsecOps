@@ -1,23 +1,20 @@
 FROM maven:3.9-eclipse-temurin-17 AS build
-
-WORKDIR /build
-COPY . .
-RUN mvn clean package -DskipTests
-
-FROM eclipse-temurin:17-jre
-
 WORKDIR /app
-COPY --from=build /build/target/*.jar app.jar
 
-# Security: non-root user
-RUN useradd appuser
-USER appuser
+COPY pom.xml .
+RUN mvn dependency:go-offline
+
+COPY src ./src
+RUN mvn package -DskipTests
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+COPY --from=build /app/target/*.jar app.jar
+
+RUN addgroup -S app && adduser -S app -G app
+USER app
 
 EXPOSE {{ port }}
-
-{% if health_endpoint %}
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD curl -f http://localhost:{{ port }}{{ health_endpoint }} || exit 1
-{% endif %}
 
 CMD ["java", "-jar", "app.jar"]

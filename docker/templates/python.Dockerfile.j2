@@ -2,22 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
 COPY . .
 
-# Security: non-root user
 RUN useradd -m appuser
 USER appuser
 
 EXPOSE {{ port }}
-
-{% if health_endpoint %}
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD curl -f http://localhost:{{ port }}{{ health_endpoint }} || exit 1
-{% endif %}
 
 CMD ["python", "main.py"]

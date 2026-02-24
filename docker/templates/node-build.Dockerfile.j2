@@ -1,16 +1,16 @@
-FROM node:20-alpine
-
+FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-
-{% if node_dependency_analysis and node_dependency_analysis.safe_production_install %}
-RUN npm ci --only=production
-{% else %}
 RUN npm ci || npm install
-{% endif %}
 
 COPY . .
+RUN npm run build
+
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=build /app .
 
 RUN addgroup -S app && adduser -S app -G app
 USER app

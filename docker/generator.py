@@ -16,126 +16,86 @@ env = Environment(
 TEMPLATE_MAP = {
     "frontend-static": "frontend-static.Dockerfile.j2",
     "node": "node.Dockerfile.j2",
+    "node-build": "node-build.Dockerfile.j2",
     "python": "python.Dockerfile.j2",
+    "python-fastapi": "python-fastapi.Dockerfile.j2",
     "java": "java.Dockerfile.j2",
+    "go": "go.Dockerfile.j2",
+    "php": "php.Dockerfile.j2",
+    "dotnet": "dotnet.Dockerfile.j2",
 }
+
+
+# -----------------------------------
+# Template selection logic
+# -----------------------------------
+def select_template(analysis: dict) -> str:
+    language_info = analysis.get("language", {})
+    language = language_info.get("language")
+    framework = language_info.get("framework")
+    needs_build = analysis.get("needs_build_step", {}).get("required")
+
+    if language == "node" and needs_build:
+        return "node-build"
+
+    if language == "python" and framework == "fastapi":
+        return "python-fastapi"
+
+    return language
 
 
 # -----------------------------------
 # Dockerfile Generator
 # -----------------------------------
 def generate_dockerfile(service_path: Path, analysis: dict) -> dict:
-    """
-    Generates a Dockerfile (and nginx.conf if needed) for a service.
-
-    Returns:
-        {
-            status: generated | skipped | error,
-            language: <detected language>,
-            path: <dockerfile path>,
-            error: <optional error message>
-        }
-    """
-
-    # ------------------------------
-    # Validation
-    # ------------------------------
     if not isinstance(service_path, Path):
-        return {
-            "status": "error",
-            "error": f"service_path must be Path, got {type(service_path)}",
-        }
-
-    if not isinstance(analysis, dict):
-        return {
-            "status": "error",
-            "error": f"analysis must be dict, got {type(analysis)}",
-        }
-
-    try:
-        service_path.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": f"Failed to create service directory: {e}",
-        }
+        return {"status": "error", "error": "service_path must be Path"}
 
     dockerfile_path = service_path / "Dockerfile"
 
-    # ------------------------------
-    # Never overwrite Dockerfile
-    # ------------------------------
+    # Never overwrite
     if dockerfile_path.exists():
         return {
             "status": "skipped",
             "path": str(dockerfile_path),
         }
 
-    # ------------------------------
-    # SAFE language detection
-    # ------------------------------
-    raw_language = analysis.get("language")
+    template_key = select_template(analysis)
 
-    if isinstance(raw_language, dict):
-        language = raw_language.get("name", "")
-    elif isinstance(raw_language, str):
-        language = raw_language
-    else:
-        language = ""
-
-    language = language.lower().strip()
-
-    # 🔥 Safe default
-    if not language:
-        language = "node"
-
-    if language not in TEMPLATE_MAP:
+    if template_key not in TEMPLATE_MAP:
         return {
             "status": "error",
-            "language": language,
-            "error": f"No Dockerfile template for language '{language}'",
+            "error": f"No Dockerfile template for {template_key}",
         }
 
-    # ------------------------------
-    # Load template
-    # ------------------------------
     try:
-        template = env.get_template(TEMPLATE_MAP[language])
+        template = env.get_template(TEMPLATE_MAP[template_key])
     except TemplateNotFound:
         return {
             "status": "error",
-            "language": language,
-            "error": f"Template file not found: {TEMPLATE_MAP[language]}",
+            "error": f"Template file missing: {TEMPLATE_MAP[template_key]}",
         }
 
-    # ------------------------------
-    # Render Dockerfile
-    # ------------------------------
     try:
         dockerfile_path.write_text(
             template.render(
                 port=analysis.get("runtime", {}).get("port"),
                 health_endpoint=analysis.get("health_endpoint"),
+                node_dependency_analysis=analysis.get("node_dependency_analysis"),
             )
         )
     except Exception as e:
         return {
             "status": "error",
-            "language": language,
-            "error": f"Failed to write Dockerfile: {e}",
+            "error": f"Failed to render Dockerfile: {e}",
         }
 
-    # ------------------------------
-    # AUTO-GENERATE nginx.conf
-    # ------------------------------
-    if language == "frontend-static":
+    # Auto nginx.conf for static
+    if template_key == "frontend-static":
         nginx_conf = service_path / "nginx.conf"
-
         if not nginx_conf.exists():
-            try:
-                nginx_conf.write_text(
-                    """
-server {
+            nginx_conf.write_text(
+                """server {
     listen 80;
     server_name localhost;
 
@@ -145,18 +105,11 @@ server {
     location / {
         try_files $uri /index.html;
     }
-}
-""".strip()
-                )
-            except Exception as e:
-                return {
-                    "status": "error",
-                    "language": language,
-                    "error": f"Failed to write nginx.conf: {e}",
-                }
+}"""
+            )
 
     return {
         "status": "generated",
-        "language": language,
+        "template": TEMPLATE_MAP[template_key],
         "path": str(dockerfile_path),
     }

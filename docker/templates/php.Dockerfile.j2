@@ -1,0 +1,20 @@
+FROM php:8.3-fpm-alpine
+
+WORKDIR /var/www/html
+
+RUN docker-php-ext-install pdo pdo_mysql
+
+COPY composer.json composer.lock ./
+
+RUN curl -sS https://getcomposer.org/installer | php -- \
+    --install-dir=/usr/bin --filename=composer \
+    && composer install --no-dev --optimize-autoloader
+
+COPY . .
+
+RUN chown -R www-data:www-data /var/www/html
+USER www-data
+
+EXPOSE 9000
+
+CMD ["php-fpm"]

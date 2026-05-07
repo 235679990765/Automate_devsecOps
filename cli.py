@@ -12,6 +12,7 @@ from docker.tagger import get_git_short_sha
 from docker.auth import docker_login
 from docker.runner import run_container
 from docker.utils import sanitize_image_name   # ✅ NEW
+from generators.github_actions import GitHubActionsGenerator
 
 
 def prompt_docker_credentials():
@@ -45,7 +46,22 @@ def main():
     result = analyze_repository(repo_input)
     print(result)
     
+    # ------------------------------------------------
+    # Generate GitHub Actions Pipeline
+    # ------------------------------------------------
+    print("\n⚙️ Generating CI/CD Pipeline...\n")
 
+    pipeline_generator = GitHubActionsGenerator()
+
+    pipeline_result = pipeline_generator.generate(
+        analysis_result=result,
+        output_dir=repo_root
+    )
+
+    print(
+        f"✅ GitHub Actions workflow generated at:\n"
+        f"{pipeline_result['path']}"
+    )
     # 🔹 Generate Dockerfiles
     print("\n🐳 Generating Dockerfiles...\n")
     for service in result["services"]:

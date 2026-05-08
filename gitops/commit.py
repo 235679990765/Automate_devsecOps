@@ -11,14 +11,40 @@ def git_commit(repo_path, message):
             check=True
         )
 
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain"
+            ],
+            cwd=repo_path,
+            capture_output=True,
+            text=True
+        )
+
+        # Nothing changed
+        if not result.stdout.strip():
+
+            return {
+                "success": True,
+                "skipped": True,
+                "message": "nothing to commit"
+            }
+
         subprocess.run(
-            ["git", "commit", "-m", message],
+            [
+                "git",
+                "commit",
+                "-m",
+                message
+            ],
             cwd=repo_path,
             check=True
         )
 
         return {
-            "success": True
+            "success": True,
+            "skipped": False
         }
 
     except subprocess.CalledProcessError as e:

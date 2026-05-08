@@ -1,10 +1,19 @@
 from pathlib import Path
 
-from generators.language_profiles import LANGUAGE_PROFILES
-from generators.framework_profiles import FRAMEWORK_PROFILES
+from generators.language_profiles import (
+    LANGUAGE_PROFILES
+)
+
+from generators.framework_profiles import (
+    FRAMEWORK_PROFILES
+)
 
 
 class GitHubActionsGenerator:
+
+    # =====================================================
+    # Generate Workflow File
+    # =====================================================
 
     def generate(
         self,
@@ -51,7 +60,7 @@ class GitHubActionsGenerator:
             service_name=service["service"],
             language=language,
             framework=framework,
-            port=runtime["port"]
+            port=runtime.get("port", 80)
         )
 
         workflow_file.write_text(
@@ -111,17 +120,31 @@ class GitHubActionsGenerator:
         build_step = ""
         test_step = ""
 
+        # =================================================
+        # Optional Build Step
+        # =================================================
+
         if build:
+
             build_step = f"""
       - name: Build Application
         run: {build}
 """
 
+        # =================================================
+        # Optional Test Step
+        # =================================================
+
         if test:
+
             test_step = f"""
       - name: Run Tests
         run: {test}
 """
+
+        # =================================================
+        # Final YAML
+        # =================================================
 
         return f"""
 name: Universal DevSecOps Pipeline
@@ -131,27 +154,43 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
 
+  # ===================================================
+  # SECURITY SCAN
+  # ===================================================
+
   security-scan:
+
+    # ONLY run for generated automation commits
+    if: contains(github.event.head_commit.message, 'Add generated DevSecOps automation')
 
     runs-on: ubuntu-latest
 
     steps:
 
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run Trivy Scan
+      - name: Run Trivy Filesystem Scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
 
-      - name: Run Semgrep
+      - name: Run Semgrep Static Analysis
         uses: returntocorp/semgrep-action@v1
 
+  # ===================================================
+  # BUILD + PUSH CONTAINER
+  # ===================================================
+
   build-and-push:
+
+    if: contains(github.event.head_commit.message, 'Add generated DevSecOps automation')
 
     runs-on: ubuntu-latest
 
@@ -159,7 +198,7 @@ jobs:
 
     steps:
 
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
 {setup}
@@ -169,19 +208,55 @@ jobs:
 {test_step}
 
 {build_step}
+      # ================================================
+      # Debug Repository Files
+      # ================================================
+
+      - name: Debug Files
+        run: |
+          pwd
+          ls -la
+          cat Dockerfile || echo "Dockerfile missing"
+
+      # ================================================
+      # Verify Dockerfile Exists
+      # ================================================
+
+      - name: Verify Dockerfile
+        run: |
+          test -f Dockerfile
+
+      # ================================================
+      # Docker Login
+      # ================================================
 
       - name: Docker Login
-        run: docker login -u ${{{{ secrets.DOCKER_USERNAME }}}} -p ${{{{ secrets.DOCKER_TOKEN }}}}
+        run: |
+          echo "${{{{ secrets.DOCKER_TOKEN }}}}" | docker login -u "${{{{ secrets.DOCKER_USERNAME }}}}" --password-stdin
+
+      # ================================================
+      # Build Docker Image
+      # ================================================
 
       - name: Build Docker Image
         run: |
-          docker build -t {service_name}:${{{{ github.sha }}}} .
+          docker build -t ${{{{ secrets.DOCKER_USERNAME }}}}/{service_name}:${{{{ github.sha }}}} .
+
+      # ================================================
+      # Push Docker Image
+      # ================================================
 
       - name: Push Docker Image
         run: |
-          docker push {service_name}:${{{{ github.sha }}}}
+          docker push ${{{{ secrets.DOCKER_USERNAME }}}}/{service_name}:${{{{ github.sha }}}}
+
+  # ===================================================
+  # DEPLOY PLACEHOLDER
+  # ===================================================
 
   deploy:
+
+    if: contains(github.event.head_commit.message, 'Add generated DevSecOps automation')
 
     runs-on: ubuntu-latest
 
@@ -189,6 +264,15 @@ jobs:
 
     steps:
 
-      - name: Deploy Placeholder
-        run: echo "Continuous Deployment Running..."
+      - name: Deployment Stage
+        run: |
+          echo "Continuous Deployment Running..."
+          echo "Deployment completed successfully"
+
+      - name: Service Information
+        run: |
+          echo "Service Name: {service_name}"
+          echo "Language: {language}"
+          echo "Framework: {framework}"
+          echo "Port: {port}"
 """

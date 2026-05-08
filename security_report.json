@@ -1,0 +1,42 @@
+[
+  {
+    "timestamp": "2026-05-08 19:44:34.238109",
+    "level": "INFO",
+    "category": "SCAN",
+    "message": "Starting security scan",
+    "data": {}
+  },
+  {
+    "timestamp": "2026-05-08 19:44:34.841432",
+    "level": "INFO",
+    "category": "RISK",
+    "message": "Risk level: LOW",
+    "data": {
+      "risk_score": 5,
+      "risk_level": "LOW",
+      "summary": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 1
+      },
+      "findings": [
+        {
+          "severity": "LOW",
+          "category": "DOCKER",
+          "details": {
+            "severity": "LOW",
+            "message": "No HEALTHCHECK configured"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-05-08 19:44:34.841432",
+    "level": "INFO",
+    "category": "SCAN",
+    "message": "Security scan completed",
+    "data": {}
+  }
+]

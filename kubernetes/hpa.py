@@ -1,0 +1,34 @@
+def generate_hpa(service):
+
+    name = service["service"]
+
+    return f"""
+apiVersion: autoscaling/v2
+
+kind: HorizontalPodAutoscaler
+
+metadata:
+  name: {name}
+
+spec:
+
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {name}
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+
+    - type: Resource
+
+      resource:
+
+        name: cpu
+
+        target:
+          type: Utilization
+          averageUtilization: 70
+"""

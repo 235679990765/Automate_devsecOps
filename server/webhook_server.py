@@ -74,9 +74,9 @@ async def github_webhook(request: Request):
 
     payload = await request.json()
 
-    # -------------------------------------------------
-    # Validate GitHub Push Event
-    # -------------------------------------------------
+    # =================================================
+    # Ignore invalid payloads
+    # =================================================
     if "repository" not in payload:
 
         return JSONResponse(
@@ -87,11 +87,61 @@ async def github_webhook(request: Request):
             }
         )
 
-    repo_url = (
+    # =================================================
+    # Prevent infinite webhook loop
+    # =================================================
+    head_commit = payload.get(
+        "head_commit",
+        {}
+    )
+
+    commit_message = head_commit.get(
+        "message",
+        ""
+    )
+
+    if (
+        "Add generated DevSecOps automation"
+        in commit_message
+    ):
+
+        print(
+            "\n⚠️ Skipping auto-generated commit"
+        )
+
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "auto-generated commit"
+        }
+
+    # =================================================
+    # Extract repository URL
+    # =================================================
+    raw_repo_url = (
         payload["repository"]
         ["clone_url"]
     )
 
+    github_token = os.getenv(
+        "GITHUB_TOKEN"
+    )
+
+    # Use authenticated clone URL if token exists
+    if github_token:
+
+        repo_url = raw_repo_url.replace(
+            "https://",
+            f"https://{github_token}@"
+        )
+
+    else:
+
+        repo_url = raw_repo_url
+
+    # =================================================
+    # Branch detection
+    # =================================================
     ref = payload.get("ref")
 
     if ref:
@@ -107,16 +157,18 @@ async def github_webhook(request: Request):
 
     try:
 
-        # -------------------------------------------------
+        # =================================================
         # Clone Repository
-        # -------------------------------------------------
+        # =================================================
         print("\n📥 Cloning repository...\n")
 
-        repo_root = clone_repository(repo_url)
+        repo_root = clone_repository(
+            repo_url
+        )
 
-        # -------------------------------------------------
+        # =================================================
         # Analyze Repository
-        # -------------------------------------------------
+        # =================================================
         print("\n🔍 Running analyzer...\n")
 
         analysis_result = analyze_repository(
@@ -125,9 +177,9 @@ async def github_webhook(request: Request):
 
         print("✅ Analysis completed")
 
-        # -------------------------------------------------
-        # Generate GitHub Actions
-        # -------------------------------------------------
+        # =================================================
+        # Generate GitHub Actions Pipeline
+        # =================================================
         print(
             "\n⚙️ Generating CI/CD pipeline...\n"
         )
@@ -148,27 +200,70 @@ async def github_webhook(request: Request):
             f"{pipeline_result['path']}"
         )
 
-        # -------------------------------------------------
+                # =================================================
         # Generate Dockerfiles
-        # -------------------------------------------------
+        # =================================================
         print(
             "\n🐳 Generating Dockerfiles...\n"
         )
 
+        docker_generated = []
+
         for service in analysis_result["services"]:
 
-            if service["deployable"]:
+            if not service["deployable"]:
+                continue
 
-                generate_dockerfile(
-                    service,
-                    repo_root
+            try:
+
+                service_path = (
+                    repo_root / service["path"]
                 )
 
-        print("✅ Dockerfiles generated")
+                docker_result = generate_dockerfile(
+                    service_path=service_path,
+                    analysis=service["analysis"]
+                )
 
-        # -------------------------------------------------
+                print(docker_result)
+
+                if docker_result["status"] == "generated":
+
+                    docker_generated.append(
+                        service["service"]
+                    )
+
+                    print(
+                        f"✅ Dockerfile generated "
+                        f"for: {service['service']}"
+                    )
+
+                elif docker_result["status"] == "skipped":
+
+                    print(
+                        f"⚠️ Dockerfile already exists "
+                        f"for: {service['service']}"
+                    )
+
+                else:
+
+                    print(
+                        f"❌ Docker generation failed "
+                        f"for: {service['service']}"
+                    )
+
+            except Exception as docker_error:
+
+                print(
+                    f"⚠️ Docker generation failed "
+                    f"for {service['service']}: "
+                    f"{docker_error}"
+                )
+
+        print("✅ Docker generation stage complete")
+        # =================================================
         # Commit Changes
-        # -------------------------------------------------
+        # =================================================
         print(
             "\n📦 Committing generated files...\n"
         )
@@ -178,6 +273,7 @@ async def github_webhook(request: Request):
             "Add generated DevSecOps automation"
         )
 
+        # Commit failed
         if not commit_result["success"]:
 
             return JSONResponse(
@@ -190,11 +286,24 @@ async def github_webhook(request: Request):
                 }
             )
 
+        # Nothing changed
+        if commit_result.get("skipped"):
+
+            print(
+                "⚠️ Nothing new to commit"
+            )
+
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "nothing-to-commit"
+            }
+
         print("✅ Git commit successful")
 
-        # -------------------------------------------------
+        # =================================================
         # Push Changes
-        # -------------------------------------------------
+        # =================================================
         print(
             "\n🚀 Pushing generated changes...\n"
         )
@@ -221,18 +330,19 @@ async def github_webhook(request: Request):
             "✅ GitHub Actions pipeline triggered"
         )
 
-        # -------------------------------------------------
+        # =================================================
         # Success Response
-        # -------------------------------------------------
+        # =================================================
         return {
 
             "success": True,
 
-            "repository": repo_url,
+            "repository": raw_repo_url,
 
             "branch": branch,
 
             "analysis": {
+
                 "project_structure":
                     analysis_result[
                         "project_structure"
@@ -248,12 +358,15 @@ async def github_webhook(request: Request):
 
             "pipeline_generated": True,
 
-            "docker_generated": True,
+            "docker_generated":
+                docker_generated,
 
             "git_push": True
         }
 
     except Exception as e:
+
+        print(f"\n❌ ERROR: {e}")
 
         return JSONResponse(
             status_code=500,
@@ -266,4 +379,5 @@ async def github_webhook(request: Request):
     finally:
 
         if repo_root:
+
             cleanup(repo_root)
